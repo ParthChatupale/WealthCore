@@ -1,142 +1,247 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Circle,
+  Globe2,
+  PiggyBank,
+  Plus,
+  Sparkles,
+  Wallet,
+} from "lucide-react";
+
 import { StatCard } from "@/components/StatCard";
-import { Wallet, TrendingUp, TrendingDown, PiggyBank, Target, Plus, ArrowUpRight, ArrowDownRight, AlertTriangle, Info, AlertOctagon } from "lucide-react";
-import { accounts, transactions, budgets, monthlyTotalBudget, cashFlow, insights, formatINR } from "@/lib/mockData";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { ApiError } from "@/lib/api";
+import { getDashboard, type DashboardData } from "@/lib/accounts";
+import { formatCurrency, formatCurrencyCode } from "@/lib/currency";
 
 export const Route = createFileRoute("/app/")({
-  head: () => ({ meta: [{ title: "Dashboard — Finance Manager" }, { name: "description", content: "Your financial dashboard." }] }),
+  head: () => ({
+    meta: [
+      { title: "Dashboard — Finance Manager" },
+      { name: "description", content: "Your financial dashboard." },
+    ],
+  }),
   component: Dashboard,
 });
 
 function Dashboard() {
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
-  const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
-  const expenses = transactions.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
-  const savings = income - expenses;
-  const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
-  const usedPct = Math.round((totalSpent / monthlyTotalBudget) * 100);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const topCats = [...budgets].sort((a, b) => b.spent - a.spent).slice(0, 4);
+  async function loadDashboard() {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await getDashboard();
+      setDashboard(result);
+    } catch (loadError) {
+      if (loadError instanceof ApiError) {
+        setError(loadError.message);
+      } else {
+        setError("Unable to load your dashboard right now.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadDashboard();
+  }, []);
+
+  const checklist = useMemo(() => {
+    if (!dashboard) {
+      return [];
+    }
+
+    return [
+      {
+        key: "profile",
+        label: "Profile created",
+        done: dashboard.setup_status.profile_complete,
+        note: "Your account is registered and ready.",
+      },
+      {
+        key: "region",
+        label: "Regional settings configured",
+        done: dashboard.setup_status.regional_complete,
+        note: dashboard.user.country && dashboard.user.currency
+          ? `${dashboard.user.country} · ${dashboard.user.currency}`
+          : "Country and currency are still missing.",
+      },
+      {
+        key: "accounts",
+        label: "First account added",
+        done: dashboard.setup_status.has_accounts,
+        note: dashboard.setup_status.has_accounts
+          ? `${dashboard.summary.account_count} account${dashboard.summary.account_count === 1 ? "" : "s"} available`
+          : "Add your first cash, bank, or wallet account.",
+      },
+    ];
+  }, [dashboard]);
+
+  if (loading) {
+    return (
+      <div className="glass rounded-xl p-6 card-elevated">
+        <h1 className="text-2xl">Loading dashboard...</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          We’re pulling your accounts and setup status now.
+        </p>
+      </div>
+    );
+  }
+
+  if (!dashboard || error) {
+    return (
+      <div className="glass rounded-xl p-6 card-elevated space-y-4">
+        <div>
+          <h1 className="text-2xl">Dashboard unavailable</h1>
+          <p className="mt-2 text-sm text-[var(--rose)]">
+            {error ?? "We could not load your dashboard."}
+          </p>
+        </div>
+        <button
+          onClick={() => void loadDashboard()}
+          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const completedSteps = checklist.filter((item) => item.done).length;
+  const progressText = `${completedSteps}/${checklist.length} complete`;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">Welcome back</p>
-          <h1 className="text-3xl md:text-4xl">Aanya Sharma</h1>
+          <h1 className="text-3xl md:text-4xl">{dashboard.user.name}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your account foundation is live. Next we’ll start feeding transactions into it.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <QA to="/app/transactions" icon={ArrowUpRight} label="Add Income" tone="var(--positive)" />
-          <QA to="/app/transactions" icon={ArrowDownRight} label="Add Expense" tone="var(--rose)" />
-          <QA to="/app/budget" icon={Target} label="Set Budget" tone="var(--amber)" />
-          <Link to="/app/reports" className="px-3 py-2 rounded-lg glass text-sm hover:border-primary/40 transition">View Reports</Link>
+          <Link
+            to="/app/accounts"
+            className="px-3 py-2 rounded-lg glass text-sm flex items-center gap-2 hover:border-primary/40 transition"
+          >
+            <Plus className="h-4 w-4 text-[var(--primary)]" />
+            <span>{dashboard.setup_status.has_accounts ? "Manage accounts" : "Add your first account"}</span>
+          </Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard label="Total Balance" value={formatINR(totalBalance)} sub="Across all accounts" icon={Wallet} accent="var(--primary)" />
-        <StatCard label="This Month Income" value={formatINR(income)} sub="+12% vs last month" icon={TrendingUp} accent="var(--positive)" />
-        <StatCard label="This Month Expenses" value={formatINR(expenses)} sub="−8% vs last month" icon={TrendingDown} accent="var(--rose)" />
-        <StatCard label="Savings" value={formatINR(savings)} sub="69% savings rate" icon={PiggyBank} accent="var(--cyan)" />
-        <StatCard label="Budget Used" value={`${usedPct}%`} sub={`${formatINR(totalSpent)} of ${formatINR(monthlyTotalBudget)}`} icon={Target} accent="var(--amber)" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Balance"
+          value={formatCurrency(dashboard.summary.total_balance, dashboard.user.currency)}
+          sub="Current displayed balance comes from account opening amounts"
+          icon={Wallet}
+          accent="var(--primary)"
+        />
+        <StatCard
+          label="Accounts"
+          value={String(dashboard.summary.account_count)}
+          sub={dashboard.summary.account_count === 1 ? "1 money source connected" : "Money sources connected"}
+          icon={PiggyBank}
+          accent="var(--amber)"
+        />
+        <StatCard
+          label="Region"
+          value={dashboard.user.country ?? "Not set"}
+          sub={dashboard.user.currency ?? "Currency missing"}
+          icon={Globe2}
+          accent="var(--cyan)"
+        />
+        <StatCard
+          label="Setup Progress"
+          value={progressText}
+          sub="Profile, region, and first account"
+          icon={Sparkles}
+          accent="var(--violet)"
+        />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 glass rounded-xl p-5 card-elevated">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg">Cash flow · April</h3>
-            <span className="text-xs text-muted-foreground">Income vs expense</span>
+            <div>
+              <h3 className="text-lg">Account balances</h3>
+              <p className="text-xs text-muted-foreground">
+                Live from your backend account records
+              </p>
+            </div>
+            <Link to="/app/accounts" className="text-xs text-muted-foreground hover:text-foreground">
+              Open accounts <ArrowRight className="inline h-3.5 w-3.5" />
+            </Link>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer>
-              <AreaChart data={cashFlow}>
-                <defs>
-                  <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="oklch(0.78 0.16 155)" stopOpacity={0.5}/>
-                    <stop offset="100%" stopColor="oklch(0.78 0.16 155)" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="g2" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="oklch(0.72 0.18 18)" stopOpacity={0.45}/>
-                    <stop offset="100%" stopColor="oklch(0.72 0.18 18)" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 6%)" />
-                <XAxis dataKey="day" stroke="oklch(0.7 0.02 260)" fontSize={12} />
-                <YAxis stroke="oklch(0.7 0.02 260)" fontSize={12} tickFormatter={(v) => `${v/1000}k`} />
-                <Tooltip contentStyle={{ background: "oklch(0.2 0.014 260)", border: "1px solid oklch(0.32 0.014 260 / 60%)", borderRadius: 8, fontSize: 12 }} />
-                <Area type="monotone" dataKey="income" stroke="oklch(0.78 0.16 155)" fill="url(#g1)" strokeWidth={2} />
-                <Area type="monotone" dataKey="expense" stroke="oklch(0.72 0.18 18)" fill="url(#g2)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+
+          {dashboard.accounts.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/70 bg-secondary/20 p-6">
+              <h4 className="text-lg">No accounts yet</h4>
+              <p className="mt-2 text-sm text-muted-foreground max-w-xl">
+                Start with the place where your money currently lives: a bank account, wallet,
+                or cash balance. That gives the rest of the finance flow somewhere real to anchor.
+              </p>
+              <Link
+                to="/app/accounts"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+              >
+                <Plus className="h-4 w-4" />
+                Create first account
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {dashboard.accounts.map((account) => (
+                <div
+                  key={account.account_id}
+                  className="rounded-xl border border-border/60 bg-secondary/20 px-4 py-3 flex items-center justify-between gap-4"
+                >
+                  <div>
+                    <div className="font-medium">{account.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {account.type} · Opening balance tracked in {formatCurrencyCode(dashboard.user.currency)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">
+                      {formatCurrency(account.initial_balance, dashboard.user.currency)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Since setup</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="glass rounded-xl p-5 card-elevated">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg">Budget progress</h3>
-            <Link to="/app/budget" className="text-xs text-muted-foreground hover:text-foreground">Open budget →</Link>
-          </div>
-          <div className="space-y-3.5">
-            {budgets.map((b) => {
-              const pct = Math.min(100, Math.round((b.spent / b.limit) * 100));
-              const over = b.spent > b.limit;
-              return (
-                <div key={b.category}>
-                  <div className="flex justify-between text-sm">
-                    <span>{b.category}</span>
-                    <span className={over ? "text-[var(--rose)]" : "text-muted-foreground"}>
-                      {formatINR(b.spent)} / {formatINR(b.limit)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-1.5 rounded-full bg-secondary overflow-hidden">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: over ? "var(--rose)" : b.color }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="glass rounded-xl p-5 card-elevated">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg">Top spending</h3>
-            <Link to="/app/reports" className="text-xs text-muted-foreground hover:text-foreground">Analyze →</Link>
-          </div>
-          <ul className="space-y-3">
-            {topCats.map((c) => (
-              <li key={c.category} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
-                  {c.category}
-                </span>
-                <span className="font-medium">{formatINR(c.spent)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="lg:col-span-2 glass rounded-xl p-5 card-elevated">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg">Recent transactions</h3>
-            <Link to="/app/transactions" className="text-xs text-muted-foreground hover:text-foreground">View all →</Link>
-          </div>
-          <ul className="divide-y divide-border/60">
-            {transactions.slice(0, 6).map((t) => (
-              <li key={t.id} className="py-2.5 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`h-8 w-8 rounded-lg grid place-items-center shrink-0 ${t.type === "income" ? "bg-[color-mix(in_oklab,var(--positive)_15%,transparent)] text-[var(--positive)]" : "bg-[color-mix(in_oklab,var(--rose)_15%,transparent)] text-[var(--rose)]"}`}>
-                    {t.type === "income" ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate">{t.description}</div>
-                    <div className="text-xs text-muted-foreground">{t.category} · {t.account}</div>
-                  </div>
-                </div>
-                <div className={`font-medium ${t.type === "income" ? "text-[var(--positive)]" : "text-foreground"}`}>
-                  {t.type === "income" ? "+" : "−"}{formatINR(t.amount)}
+          <h3 className="text-lg">First-time setup</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            We’re keeping the first steps light so the app never feels empty.
+          </p>
+          <ul className="mt-5 space-y-3">
+            {checklist.map((item) => (
+              <li
+                key={item.key}
+                className="rounded-xl border border-border/60 bg-secondary/20 px-4 py-3 flex items-start gap-3"
+              >
+                {item.done ? (
+                  <CheckCircle2 className="h-4 w-4 mt-0.5 text-[var(--positive)] shrink-0" />
+                ) : (
+                  <Circle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{item.label}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{item.note}</div>
                 </div>
               </li>
             ))}
@@ -144,54 +249,24 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="grid lg:grid-cols-2 gap-4">
         <div className="glass rounded-xl p-5 card-elevated">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg">Account balances</h3>
-            <Link to="/app/accounts" className="text-xs text-muted-foreground hover:text-foreground">Manage →</Link>
-          </div>
-          <ul className="space-y-3">
-            {accounts.map((a) => (
-              <li key={a.id} className="flex items-center justify-between text-sm">
-                <div>
-                  <div>{a.name}</div>
-                  <div className="text-xs text-muted-foreground">{a.type}</div>
-                </div>
-                <div className="font-medium">{formatINR(a.balance)}</div>
-              </li>
-            ))}
-          </ul>
+          <h3 className="text-lg">What unlocks next</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Once accounts are in place, we can start recording daily income and expenses against
+            them. That’s the step that will bring budgets, trends, and reports to life.
+          </p>
         </div>
 
-        <div className="lg:col-span-2 glass rounded-xl p-5 card-elevated">
-          <h3 className="text-lg mb-4">Alerts & insights</h3>
-          <ul className="space-y-2.5">
-            {insights.map((i) => {
-              const Icon = i.tone === "alert" ? AlertOctagon : i.tone === "warn" ? AlertTriangle : Info;
-              const color = i.tone === "alert" ? "var(--rose)" : i.tone === "warn" ? "var(--amber)" : "var(--cyan)";
-              return (
-                <li key={i.text} className="flex items-start gap-3 text-sm p-3 rounded-lg border border-border/60 bg-secondary/30">
-                  <Icon className="h-4 w-4 mt-0.5 shrink-0" style={{ color }} />
-                  <span>{i.text}</span>
-                </li>
-              );
-            })}
-          </ul>
+        <div className="glass rounded-xl p-5 card-elevated">
+          <h3 className="text-lg">Phase 3 focus</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            This dashboard is intentionally live only for setup and account data right now. We’re
+            keeping budgets, reports, and transactions for the next phase so the data story stays
+            clean.
+          </p>
         </div>
       </div>
     </div>
-  );
-}
-
-function QA({ to, icon: Icon, label, tone }: { to: "/app/transactions" | "/app/budget"; icon: any; label: string; tone: string }) {
-  return (
-    <Link
-      to={to}
-      className="px-3 py-2 rounded-lg glass text-sm flex items-center gap-2 hover:border-primary/40 transition"
-      style={{ color: tone }}
-    >
-      <Icon className="h-4 w-4" /> <span className="text-foreground">{label}</span>
-      <Plus className="h-3 w-3 opacity-60" />
-    </Link>
   );
 }

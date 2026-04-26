@@ -2,6 +2,8 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { LayoutDashboard, ArrowLeftRight, Wallet, Target, BarChart3, Settings, LogOut, Coins, Menu, X } from "lucide-react";
 import { useState } from "react";
 
+import { logout } from "@/lib/auth";
+
 const items = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard },
   { to: "/app/transactions", label: "Transactions", icon: ArrowLeftRight },
@@ -15,6 +17,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await logout();
+      await nav({ to: "/" });
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   const Side = (
     <aside className="h-full w-64 shrink-0 glass-strong border-r flex flex-col">
@@ -45,10 +58,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
       <button
-        onClick={() => nav({ to: "/" })}
+        onClick={handleLogout}
+        disabled={loggingOut}
         className="m-3 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition"
       >
-        <LogOut className="h-4 w-4" /> Logout
+        <LogOut className="h-4 w-4" /> {loggingOut ? "Logging out..." : "Logout"}
       </button>
     </aside>
   );
