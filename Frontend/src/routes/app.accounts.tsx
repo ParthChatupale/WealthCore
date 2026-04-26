@@ -24,6 +24,7 @@ import {
 } from "@/lib/accounts";
 import { getCurrentUser, type AuthUser } from "@/lib/auth";
 import { formatCurrency } from "@/lib/currency";
+import { notifyFinanceDataChanged, subscribeToFinanceDataChanged } from "@/lib/financeEvents";
 
 export const Route = createFileRoute("/app/accounts")({
   head: () => ({
@@ -75,10 +76,13 @@ function Page() {
 
   useEffect(() => {
     void loadPage();
+    return subscribeToFinanceDataChanged(() => {
+      void loadPage();
+    });
   }, []);
 
   const totalBalance = useMemo(
-    () => accounts.reduce((sum, account) => sum + account.initial_balance, 0),
+    () => accounts.reduce((sum, account) => sum + account.display_balance, 0),
     [accounts],
   );
 
@@ -127,6 +131,7 @@ function Page() {
       setDialogOpen(false);
       setEditingAccount(null);
       setFormState(defaultFormState);
+      notifyFinanceDataChanged();
     } catch (submitError) {
       if (submitError instanceof ApiError) {
         setFormError(submitError.message);
@@ -144,6 +149,7 @@ function Page() {
     try {
       await deleteAccount(account.account_id);
       setAccounts((current) => current.filter((item) => item.account_id !== account.account_id));
+      notifyFinanceDataChanged();
     } catch (deleteError) {
       if (deleteError instanceof ApiError) {
         setDeleteState({ accountId: account.account_id, error: deleteError.message });
@@ -242,10 +248,11 @@ function Page() {
                   </div>
                   <div className="mt-4 text-lg">{account.name}</div>
                   <div className="mt-1 text-2xl font-medium">
-                    {formatCurrency(account.initial_balance, user.currency)}
+                    {formatCurrency(account.display_balance, user.currency)}
                   </div>
                   <div className="mt-3 text-xs text-muted-foreground">
-                    Created {new Date(account.created_at).toLocaleDateString()}
+                    Opening balance {formatCurrency(account.initial_balance, user.currency)} · Created{" "}
+                    {new Date(account.created_at).toLocaleDateString()}
                   </div>
                   <div className="mt-4 flex items-center gap-2">
                     <Button
@@ -277,13 +284,13 @@ function Page() {
             <h3 className="text-lg mb-4">Account-wise summary</h3>
             <div className="space-y-3">
               {accounts.map((account) => {
-                const pct = totalBalance > 0 ? Math.round((account.initial_balance / totalBalance) * 100) : 0;
+                const pct = totalBalance > 0 ? Math.round((account.display_balance / totalBalance) * 100) : 0;
                 return (
                   <div key={account.account_id}>
                     <div className="flex justify-between text-sm gap-3">
                       <span>{account.name}</span>
                       <span className="text-muted-foreground">
-                        {formatCurrency(account.initial_balance, user.currency)} · {pct}%
+                        {formatCurrency(account.display_balance, user.currency)} · {pct}%
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 rounded-full bg-secondary overflow-hidden">

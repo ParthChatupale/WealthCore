@@ -4,6 +4,7 @@ from flask import Blueprint, g, jsonify, request
 
 from app.auth import auth_error, login_required
 from app.extensions import db
+from app.finance_service import get_current_month_summary, list_accounts_with_balances
 from app.models import Account, Transaction
 
 
@@ -15,12 +16,8 @@ ALLOWED_ACCOUNT_TYPES = {"Cash", "Bank", "Wallet"}
 @account_bp.get("/accounts")
 @login_required
 def list_accounts():
-    accounts = (
-        Account.query.filter_by(user_id=g.current_user.user_id)
-        .order_by(Account.created_at.asc())
-        .all()
-    )
-    return jsonify({"accounts": [account.to_dict() for account in accounts]})
+    accounts = list_accounts_with_balances(g.current_user.user_id)
+    return jsonify({"accounts": accounts})
 
 
 @account_bp.post("/accounts")
@@ -51,7 +48,10 @@ def create_account():
     db.session.add(account)
     db.session.commit()
 
-    response = jsonify({"account": account.to_dict()})
+    account_payload = next(
+        item for item in list_accounts_with_balances(g.current_user.user_id) if item["account_id"] == account.account_id
+    )
+    response = jsonify({"account": account_payload})
     response.status_code = 201
     return response
 
@@ -82,7 +82,10 @@ def update_account(account_id: int):
     account.initial_balance = parsed_balance
     db.session.commit()
 
-    return jsonify({"account": account.to_dict()})
+    account_payload = next(
+        item for item in list_accounts_with_balances(g.current_user.user_id) if item["account_id"] == account.account_id
+    )
+    return jsonify({"account": account_payload})
 
 
 @account_bp.delete("/accounts/<int:account_id>")
@@ -103,26 +106,31 @@ def delete_account(account_id: int):
 @login_required
 def dashboard():
     user = g.current_user
-    accounts = (
-        Account.query.filter_by(user_id=user.user_id)
-        .order_by(Account.created_at.asc())
+    accounts = list_accounts_with_balances(user.user_id)
+    total_balance = round(sum(account["display_balance"] for account in accounts), 2)
+    month_summary = get_current_month_summary(user.user_id)
+    recent_transactions = (
+        Transaction.query.filter_by(user_id=user.user_id)
+        .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+        .limit(6)
         .all()
     )
 
-    total_balance = round(sum(float(account.initial_balance) for account in accounts), 2)
     return jsonify(
         {
             "user": user.to_dict(),
-            "accounts": [account.to_dict() for account in accounts],
+            "accounts": accounts,
             "summary": {
                 "total_balance": total_balance,
                 "account_count": len(accounts),
+                **month_summary,
             },
             "setup_status": {
                 "profile_complete": True,
                 "regional_complete": bool(user.country and user.currency),
                 "has_accounts": bool(accounts),
             },
+            "recent_transactions": [transaction.to_dict() for transaction in recent_transactions],
         }
     )
 

@@ -143,7 +143,9 @@ erDiagram
 
 - Each user has isolated financial data through `user_id`.
 - Authentication is handled with JWT stored in an HttpOnly cookie.
-- `accounts.initial_balance` stores the starting amount for each account and is the current displayed balance until transactions are implemented.
+- `accounts.initial_balance` stores the starting amount for each account.
+- Once transactions are implemented, displayed account balance is calculated as:
+  `initial_balance + total income - total expenses` for that account.
 - `subcategory_id` is optional because a transaction may use only a main category.
 - `recurring_id` is optional because only generated recurring transactions reference it.
 - `month` in `budgets` and `report_snapshots` represents a monthly reporting period such as `2026-04`.

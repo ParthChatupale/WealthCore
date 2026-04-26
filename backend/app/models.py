@@ -63,12 +63,13 @@ class Account(db.Model):
     transactions = db.relationship("Transaction", back_populates="account")
     recurring_transactions = db.relationship("RecurringTransaction", back_populates="account")
 
-    def to_dict(self):
+    def to_dict(self, display_balance=None):
         return {
             "account_id": self.account_id,
             "name": self.name,
             "type": self.type,
             "initial_balance": float(self.initial_balance),
+            "display_balance": float(self.initial_balance if display_balance is None else display_balance),
             "created_at": self.created_at.isoformat(),
         }
 
@@ -91,6 +92,14 @@ class Category(db.Model):
     transactions = db.relationship("Transaction", back_populates="category")
     budgets = db.relationship("Budget", back_populates="category")
     recurring_transactions = db.relationship("RecurringTransaction", back_populates="category")
+
+    def to_dict(self):
+        return {
+            "category_id": self.category_id,
+            "name": self.name,
+            "type": self.type,
+            "is_default": self.is_default,
+        }
 
 
 class Subcategory(db.Model):
@@ -135,6 +144,23 @@ class Transaction(db.Model):
     category = db.relationship("Category", back_populates="transactions")
     subcategory = db.relationship("Subcategory", back_populates="transactions")
     recurring_transaction = db.relationship("RecurringTransaction", back_populates="transactions")
+
+    def to_dict(self):
+        return {
+            "transaction_id": self.transaction_id,
+            "user_id": self.user_id,
+            "account_id": self.account_id,
+            "account_name": self.account.name if self.account else None,
+            "category_id": self.category_id,
+            "category_name": self.category.name if self.category else None,
+            "subcategory_id": self.subcategory_id,
+            "subcategory_name": self.subcategory.name if self.subcategory else None,
+            "amount": float(self.amount),
+            "type": self.type,
+            "date": self.date.isoformat(),
+            "description": self.description,
+            "created_at": self.created_at.isoformat(),
+        }
 
 
 class Budget(db.Model):

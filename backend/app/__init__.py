@@ -5,6 +5,7 @@ from app.auth_routes import auth_bp
 from app.config import Config
 from app.extensions import cors, db, migrate
 from app.routes import main_bp
+from app.transaction_routes import transaction_bp
 
 
 def create_app(config_class=Config):
@@ -24,5 +25,6 @@ def create_app(config_class=Config):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
+    app.register_blueprint(transaction_bp)
 
     return app
