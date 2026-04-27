@@ -7,6 +7,7 @@ A multi-user budget management system with a React frontend and Flask/PostgreSQL
 ```text
 Frontend/   React frontend prototype
 backend/    Flask API and PostgreSQL models
+ROADMAP.md  Current implementation status and next phases
 ```
 
 ## Frontend

@@ -12,24 +12,6 @@ transaction_bp = Blueprint("transactions", __name__, url_prefix="/api")
 ALLOWED_TRANSACTION_TYPES = {"income", "expense"}
 
 
-@transaction_bp.get("/categories")
-@login_required
-def list_categories():
-    category_type = (request.args.get("type") or "").strip().lower()
-    query = Category.query.filter_by(user_id=g.current_user.user_id).order_by(
-        Category.type.asc(),
-        Category.name.asc(),
-    )
-
-    if category_type:
-        if category_type not in ALLOWED_TRANSACTION_TYPES:
-            return auth_error("Category type must be income or expense.", 400)
-        query = query.filter(Category.type == category_type)
-
-    categories = query.all()
-    return jsonify({"categories": [category.to_dict() for category in categories]})
-
-
 @transaction_bp.get("/transactions")
 @login_required
 def list_transactions():
@@ -50,6 +32,8 @@ def list_transactions():
         query = query.filter(Transaction.account_id == filters["account_id"])
     if filters["category_id"] is not None:
         query = query.filter(Transaction.category_id == filters["category_id"])
+    if filters["subcategory_id"] is not None:
+        query = query.filter(Transaction.subcategory_id == filters["subcategory_id"])
     if filters["date_from"] is not None:
         query = query.filter(Transaction.date >= filters["date_from"])
     if filters["date_to"] is not None:
@@ -124,6 +108,13 @@ def parse_transaction_filters():
     if error:
         return None, error
 
+    subcategory_id, error = parse_optional_int(
+        request.args.get("subcategory_id"),
+        "Subcategory filter is invalid.",
+    )
+    if error:
+        return None, error
+
     date_from, error = parse_optional_date(request.args.get("date_from"), "date_from is invalid.")
     if error:
         return None, error
@@ -139,6 +130,7 @@ def parse_transaction_filters():
         "type": transaction_type or None,
         "account_id": account_id,
         "category_id": category_id,
+        "subcategory_id": subcategory_id,
         "date_from": date_from,
         "date_to": date_to,
     }, None

@@ -86,6 +86,7 @@ class Category(db.Model):
     name = db.Column(db.String(120), nullable=False)
     type = db.Column(db.String(20), nullable=False)
     is_default = db.Column(db.Boolean, nullable=False, default=False)
+    icon_name = db.Column(db.String(80), nullable=True)
 
     user = db.relationship("User", back_populates="categories")
     subcategories = db.relationship("Subcategory", back_populates="category", cascade="all, delete-orphan")
@@ -93,13 +94,19 @@ class Category(db.Model):
     budgets = db.relationship("Budget", back_populates="category")
     recurring_transactions = db.relationship("RecurringTransaction", back_populates="category")
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_subcategories: bool = False):
+        payload = {
             "category_id": self.category_id,
             "name": self.name,
             "type": self.type,
             "is_default": self.is_default,
+            "icon_name": self.icon_name,
         }
+        if include_subcategories:
+            payload["subcategories"] = [
+                subcategory.to_dict() for subcategory in sorted(self.subcategories, key=lambda item: item.name.lower())
+            ]
+        return payload
 
 
 class Subcategory(db.Model):
@@ -114,6 +121,13 @@ class Subcategory(db.Model):
 
     category = db.relationship("Category", back_populates="subcategories")
     transactions = db.relationship("Transaction", back_populates="subcategory")
+
+    def to_dict(self):
+        return {
+            "subcategory_id": self.subcategory_id,
+            "category_id": self.category_id,
+            "name": self.name,
+        }
 
 
 class Transaction(db.Model):
@@ -153,6 +167,7 @@ class Transaction(db.Model):
             "account_name": self.account.name if self.account else None,
             "category_id": self.category_id,
             "category_name": self.category.name if self.category else None,
+            "category_icon_name": self.category.icon_name if self.category else None,
             "subcategory_id": self.subcategory_id,
             "subcategory_name": self.subcategory.name if self.subcategory else None,
             "amount": float(self.amount),

@@ -4,7 +4,12 @@ from flask import Blueprint, g, jsonify, request
 
 from app.auth import auth_error, login_required
 from app.extensions import db
-from app.finance_service import get_current_month_summary, list_accounts_with_balances
+from app.finance_service import (
+    get_budget_summary,
+    get_current_month_summary,
+    list_accounts_with_balances,
+    month_key_from_date,
+)
 from app.models import Account, Transaction
 
 
@@ -109,6 +114,7 @@ def dashboard():
     accounts = list_accounts_with_balances(user.user_id)
     total_balance = round(sum(account["display_balance"] for account in accounts), 2)
     month_summary = get_current_month_summary(user.user_id)
+    budget_summary = get_budget_summary(user.user_id, month_key_from_date())
     recent_transactions = (
         Transaction.query.filter_by(user_id=user.user_id)
         .order_by(Transaction.date.desc(), Transaction.created_at.desc())
@@ -131,6 +137,16 @@ def dashboard():
                 "has_accounts": bool(accounts),
             },
             "recent_transactions": [transaction.to_dict() for transaction in recent_transactions],
+            "budget": {
+                "month": budget_summary["month"],
+                "has_budget": budget_summary["has_budget"],
+                "total_limit": budget_summary["total_limit"],
+                "total_spent": budget_summary["total_spent"],
+                "total_remaining": budget_summary["total_remaining"],
+                "used_percentage": budget_summary["used_percentage"],
+                "over_budget_categories": budget_summary["over_budget_categories"],
+                "categories": budget_summary["categories"],
+            },
         }
     )
 

@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, ArrowLeftRight, Wallet, Target, BarChart3, Settings, LogOut, Coins, Menu, X } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, Wallet, Target, BarChart3, Settings, LogOut, Coins, Menu, X, Shapes } from "lucide-react";
 import { useState } from "react";
 
 import { logout } from "@/lib/auth";
@@ -9,6 +9,7 @@ const items = [
   { to: "/app/transactions", label: "Transactions", icon: ArrowLeftRight },
   { to: "/app/accounts", label: "Accounts", icon: Wallet },
   { to: "/app/budget", label: "Budget", icon: Target },
+  { to: "/app/categories", label: "Categories", icon: Shapes },
   { to: "/app/reports", label: "Reports", icon: BarChart3 },
   { to: "/app/settings", label: "Settings", icon: Settings },
 ] as const;

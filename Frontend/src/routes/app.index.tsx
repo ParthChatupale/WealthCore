@@ -15,6 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { CategoryIcon } from "@/components/CategoryIcon";
 import { StatCard } from "@/components/StatCard";
 import { ApiError } from "@/lib/api";
 import { getDashboard, type DashboardData } from "@/lib/accounts";
@@ -141,6 +142,7 @@ function Dashboard() {
         <div className="flex flex-wrap gap-2">
           <QuickAction to="/app/transactions" icon={ArrowUpRight} label="Add Income" tone="var(--positive)" />
           <QuickAction to="/app/transactions" icon={ArrowDownRight} label="Add Expense" tone="var(--rose)" />
+          <QuickAction to="/app/budget" icon={PiggyBank} label="Open Budget" tone="var(--amber)" />
           <Link
             to="/app/accounts"
             className="px-3 py-2 rounded-lg glass text-sm flex items-center gap-2 hover:border-primary/40 transition"
@@ -239,12 +241,18 @@ function Dashboard() {
                         <ArrowDownRight className="h-4 w-4" />
                       )}
                     </span>
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] text-[var(--primary)] shrink-0">
+                      <CategoryIcon iconName={transaction.category_icon_name} className="h-4 w-4" />
+                    </span>
                     <div className="min-w-0">
                       <div className="truncate">
                         {transaction.description || transaction.category_name || "Transaction"}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {transaction.category_name} · {transaction.account_name} · {formatIndianDate(transaction.date)}
+                        {transaction.category_name}
+                        {transaction.subcategory_name ? ` / ${transaction.subcategory_name}` : ""}
+                        {" · "}
+                        {transaction.account_name} · {formatIndianDate(transaction.date)}
                       </div>
                     </div>
                   </div>
@@ -321,17 +329,128 @@ function Dashboard() {
         </div>
 
         <div className="glass rounded-xl p-5 card-elevated">
-          <h3 className="text-lg">Region</h3>
-          <div className="mt-4 rounded-xl border border-border/60 bg-secondary/20 px-4 py-4">
-            <div className="flex items-start gap-3">
-              <span className="h-9 w-9 rounded-lg grid place-items-center bg-[color-mix(in_oklab,var(--cyan)_18%,transparent)] text-[var(--cyan)]">
-                <Globe2 className="h-4 w-4" />
-              </span>
-              <div>
-                <div className="font-medium">{dashboard.user.country ?? "Not set"}</div>
-                <div className="text-sm text-muted-foreground">
-                  {dashboard.user.currency ?? "Currency missing"}
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg">Budget snapshot</h3>
+              <p className="text-xs text-muted-foreground">Current month budget vs actual spending</p>
+            </div>
+            <Link to="/app/budget" className="text-xs text-muted-foreground hover:text-foreground">
+              Open budget
+            </Link>
+          </div>
+          {!dashboard.budget.has_budget ? (
+            <div className="rounded-xl border border-dashed border-border/70 bg-secondary/20 p-5">
+              <h4 className="text-base">No budget set for this month</h4>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Create category limits to start comparing planned spending against what actually happened.
+              </p>
+              <Link
+                to="/app/budget"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+              >
+                <Plus className="h-4 w-4" />
+                Create budget
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border/60 bg-secondary/20 px-4 py-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Budget</div>
+                    <div className="mt-1 font-medium">
+                      {formatCurrency(dashboard.budget.total_limit, dashboard.user.currency)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Spent</div>
+                    <div className="mt-1 font-medium">
+                      {formatCurrency(dashboard.budget.total_spent, dashboard.user.currency)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Remaining</div>
+                    <div
+                      className="mt-1 font-medium"
+                      style={{
+                        color: dashboard.budget.total_remaining < 0 ? "var(--rose)" : undefined,
+                      }}
+                    >
+                      {formatCurrency(dashboard.budget.total_remaining, dashboard.user.currency)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Used</div>
+                    <div className="mt-1 font-medium">{dashboard.budget.used_percentage}%</div>
+                  </div>
                 </div>
+                <div className="mt-4 h-2 rounded-full bg-secondary overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, dashboard.budget.used_percentage)}%`,
+                      background: "linear-gradient(90deg, var(--primary), var(--violet))",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <ul className="space-y-2">
+                {dashboard.budget.categories.slice(0, 4).map((item) => (
+                  <li
+                    key={item.category_id}
+                    className="flex items-center justify-between rounded-xl border border-border/60 bg-secondary/20 px-4 py-3 text-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-8 w-8 place-items-center rounded-lg bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] text-[var(--primary)]">
+                        <CategoryIcon iconName={item.icon_name} className="h-4 w-4" />
+                      </span>
+                      <div>{item.category_name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatCurrency(item.spent_amount, dashboard.user.currency)} of{" "}
+                        {formatCurrency(item.limit_amount, dashboard.user.currency)}
+                      </div>
+                    </div>
+                    {item.over_budget_amount > 0 ? (
+                      <span className="text-xs text-[var(--rose)]">
+                        +{formatCurrency(item.over_budget_amount, dashboard.user.currency)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        {formatCurrency(item.remaining_amount, dashboard.user.currency)} left
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+
+              {dashboard.budget.over_budget_categories.length > 0 ? (
+                <div className="rounded-xl border border-[color-mix(in_oklab,var(--rose)_35%,transparent)] bg-[color-mix(in_oklab,var(--rose)_10%,transparent)] px-4 py-3">
+                  <div className="text-sm font-medium text-[var(--rose)]">Over budget</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {dashboard.budget.over_budget_categories
+                      .map((item) => item.category_name)
+                      .filter(Boolean)
+                      .join(", ")}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 card-elevated">
+        <h3 className="text-lg">Region</h3>
+        <div className="mt-4 rounded-xl border border-border/60 bg-secondary/20 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <span className="h-9 w-9 rounded-lg grid place-items-center bg-[color-mix(in_oklab,var(--cyan)_18%,transparent)] text-[var(--cyan)]">
+              <Globe2 className="h-4 w-4" />
+            </span>
+            <div>
+              <div className="font-medium">{dashboard.user.country ?? "Not set"}</div>
+              <div className="text-sm text-muted-foreground">
+                {dashboard.user.currency ?? "Currency missing"}
               </div>
             </div>
           </div>
@@ -347,7 +466,7 @@ function QuickAction({
   label,
   tone,
 }: {
-  to: "/app/transactions";
+  to: "/app/transactions" | "/app/budget";
   icon: typeof ArrowUpRight;
   label: string;
   tone: string;

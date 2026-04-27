@@ -11,6 +11,7 @@ from app.auth import (
     login_required,
     set_auth_cookie,
 )
+from app.category_icons import default_icon_for_category
 from app.extensions import db
 from app.models import Category, User
 
@@ -135,5 +136,6 @@ def seed_default_categories(user_id: int) -> None:
                     name=name,
                     type=category_type,
                     is_default=True,
+                    icon_name=default_icon_for_category(category_type, name),
                 )
             )

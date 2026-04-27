@@ -1,10 +1,12 @@
 import { apiRequest } from "@/lib/api";
-import type { CategoryRecord, TransactionRecord } from "@/lib/accounts";
+import type { TransactionRecord } from "@/lib/accounts";
+import type { CategoryListResponse } from "@/lib/categories";
 
 export type TransactionFilters = {
   type?: "income" | "expense" | "all";
   account_id?: number | "";
   category_id?: number | "";
+  subcategory_id?: number | "";
   date_from?: string;
   date_to?: string;
 };
@@ -31,6 +33,9 @@ function buildQueryString(filters: TransactionFilters = {}) {
   if (filters.category_id !== undefined && filters.category_id !== "") {
     params.set("category_id", String(filters.category_id));
   }
+  if (filters.subcategory_id !== undefined && filters.subcategory_id !== "") {
+    params.set("subcategory_id", String(filters.subcategory_id));
+  }
   if (filters.date_from) {
     params.set("date_from", filters.date_from);
   }
@@ -44,7 +49,7 @@ function buildQueryString(filters: TransactionFilters = {}) {
 
 export function getCategories(type?: "income" | "expense") {
   const query = type ? `?type=${type}` : "";
-  return apiRequest<{ categories: CategoryRecord[] }>(`/api/categories${query}`);
+  return apiRequest<CategoryListResponse>(`/api/categories${query}`);
 }
 
 export function getTransactions(filters: TransactionFilters = {}) {

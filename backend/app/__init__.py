@@ -2,6 +2,8 @@ from flask import Flask
 
 from app.account_routes import account_bp
 from app.auth_routes import auth_bp
+from app.budget_routes import budget_bp
+from app.category_routes import category_bp
 from app.config import Config
 from app.extensions import cors, db, migrate
 from app.routes import main_bp
@@ -25,6 +27,8 @@ def create_app(config_class=Config):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
+    app.register_blueprint(budget_bp)
+    app.register_blueprint(category_bp)
     app.register_blueprint(transaction_bp)
 
     return app

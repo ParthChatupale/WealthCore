@@ -16,6 +16,7 @@ Authenticated users can access:
 - Transactions
 - Accounts
 - Budget
+- Categories
 - Reports
 - Settings
 - Logout
@@ -68,6 +69,7 @@ erDiagram
         string name
         string type
         boolean is_default
+        string icon_name
     }
 
     SUBCATEGORY {
@@ -146,6 +148,10 @@ erDiagram
 - `accounts.initial_balance` stores the starting amount for each account.
 - Once transactions are implemented, displayed account balance is calculated as:
   `initial_balance + total income - total expenses` for that account.
+- Monthly budgets are stored as one row per `user + expense category + month`.
+- Budget tracking is live: actual spending for a month is calculated from `expense` transactions in that same month.
+- Overall monthly budget is derived from the sum of category budget limits rather than stored separately.
+- Categories now support `icon_name`, and each category can contain user-owned subcategories.
 - `subcategory_id` is optional because a transaction may use only a main category.
 - `recurring_id` is optional because only generated recurring transactions reference it.
 - `month` in `budgets` and `report_snapshots` represents a monthly reporting period such as `2026-04`.

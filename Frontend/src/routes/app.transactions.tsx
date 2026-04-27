@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { CategoryIcon } from "@/components/CategoryIcon";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ import {
   getAccounts,
   type AccountRecord,
   type CategoryRecord,
+  type SubcategoryRecord,
   type TransactionRecord,
 } from "@/lib/accounts";
 import { getCurrentUser, type AuthUser } from "@/lib/auth";
@@ -71,6 +73,7 @@ type TransactionFormState = {
   type: "income" | "expense";
   account_id: string;
   category_id: string;
+  subcategory_id: string;
   amount: string;
   date: string;
   description: string;
@@ -89,6 +92,7 @@ function Page() {
   const [filter, setFilter] = useState<TransactionTypeFilter>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [panel, setPanel] = useState<TransactionPanelMode>(null);
@@ -96,6 +100,7 @@ function Page() {
     type: "expense",
     account_id: "",
     category_id: "",
+    subcategory_id: "",
     amount: "",
     date: todayString,
     description: "",
@@ -143,6 +148,7 @@ function Page() {
         type: filter,
         account_id: accountFilter === "all" ? "" : Number(accountFilter),
         category_id: categoryFilter === "all" ? "" : Number(categoryFilter),
+        subcategory_id: subcategoryFilter === "all" ? "" : Number(subcategoryFilter),
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
       };
@@ -167,12 +173,24 @@ function Page() {
     if (!loading) {
       void loadTransactions();
     }
-  }, [loading, filter, accountFilter, categoryFilter, dateFrom, dateTo]);
+  }, [loading, filter, accountFilter, categoryFilter, subcategoryFilter, dateFrom, dateTo]);
 
   const availableCategories = useMemo(
     () => categories.filter((category) => category.type === formState.type),
     [categories, formState.type],
   );
+  const availableSubcategories = useMemo(() => {
+    const selectedCategory = categories.find(
+      (category) => String(category.category_id) === formState.category_id,
+    );
+    return selectedCategory?.subcategories ?? [];
+  }, [categories, formState.category_id]);
+  const filterSubcategories = useMemo(() => {
+    const selectedCategory = categories.find(
+      (category) => String(category.category_id) === categoryFilter,
+    );
+    return selectedCategory?.subcategories ?? [];
+  }, [categories, categoryFilter]);
 
   useEffect(() => {
     if (
@@ -185,9 +203,39 @@ function Page() {
         category_id: availableCategories[0]
           ? String(availableCategories[0].category_id)
           : "",
+        subcategory_id: "",
       }));
     }
   }, [availableCategories, formState.category_id]);
+
+  useEffect(() => {
+    if (
+      formState.subcategory_id &&
+      !availableSubcategories.some(
+        (subcategory) => String(subcategory.subcategory_id) === formState.subcategory_id,
+      )
+    ) {
+      setFormState((current) => ({
+        ...current,
+        subcategory_id: "",
+      }));
+    }
+  }, [availableSubcategories, formState.subcategory_id]);
+
+  useEffect(() => {
+    if (categoryFilter === "all") {
+      setSubcategoryFilter("all");
+      return;
+    }
+    if (
+      subcategoryFilter !== "all" &&
+      !filterSubcategories.some(
+        (subcategory) => String(subcategory.subcategory_id) === subcategoryFilter,
+      )
+    ) {
+      setSubcategoryFilter("all");
+    }
+  }, [categoryFilter, filterSubcategories, subcategoryFilter]);
 
   function openCreatePanel(type: "income" | "expense") {
     setFormError(null);
@@ -197,6 +245,7 @@ function Page() {
       type,
       account_id: accounts[0] ? String(accounts[0].account_id) : "",
       category_id: firstCategory ? String(firstCategory.category_id) : "",
+      subcategory_id: "",
       amount: "",
       date: todayString,
       description: "",
@@ -210,6 +259,7 @@ function Page() {
       type: transaction.type,
       account_id: String(transaction.account_id),
       category_id: String(transaction.category_id),
+      subcategory_id: transaction.subcategory_id ? String(transaction.subcategory_id) : "",
       amount: String(transaction.amount),
       date: transaction.date,
       description: transaction.description ?? "",
@@ -225,6 +275,7 @@ function Page() {
       const payload = {
         account_id: Number(formState.account_id),
         category_id: Number(formState.category_id),
+        subcategory_id: formState.subcategory_id ? Number(formState.subcategory_id) : null,
         amount: Number(formState.amount),
         type: formState.type,
         date: formState.date,
@@ -387,13 +438,32 @@ function Page() {
         />
         <InlineSelect
           value={categoryFilter}
-          onValueChange={setCategoryFilter}
+          onValueChange={(value) => {
+            setCategoryFilter(value);
+            if (value === "all") {
+              setSubcategoryFilter("all");
+            }
+          }}
           placeholder="All categories"
           options={[
             { value: "all", label: "All categories" },
             ...categories.map((category) => ({
               value: String(category.category_id),
               label: category.name,
+              icon_name: category.icon_name,
+            })),
+          ]}
+        />
+        <InlineSelect
+          value={subcategoryFilter}
+          onValueChange={setSubcategoryFilter}
+          placeholder={categoryFilter === "all" ? "Select category first" : "All subcategories"}
+          disabled={categoryFilter === "all" || filterSubcategories.length === 0}
+          options={[
+            { value: "all", label: "All subcategories" },
+            ...filterSubcategories.map((subcategory) => ({
+              value: String(subcategory.subcategory_id),
+              label: subcategory.name,
             })),
           ]}
         />
@@ -449,13 +519,26 @@ function Page() {
                   <div className="min-w-0">
                     <div>{transaction.description || transaction.category_name || "Transaction"}</div>
                     <div className="text-xs text-muted-foreground md:hidden">
-                      {transaction.category_name} · {transaction.account_name} ·{" "}
+                      {transaction.category_name}
+                      {transaction.subcategory_name ? ` / ${transaction.subcategory_name}` : ""}
+                      {" · "}
+                      {transaction.account_name} ·{" "}
                       {formatIndianDate(transaction.date)}
                     </div>
                   </div>
                 </div>
                 <div className="col-span-2 text-muted-foreground hidden md:block">
-                  {transaction.category_name}
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-7 w-7 place-items-center rounded-lg bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] text-[var(--primary)]">
+                      <CategoryIcon iconName={transaction.category_icon_name} className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <div>{transaction.category_name}</div>
+                      {transaction.subcategory_name ? (
+                        <div className="text-xs text-muted-foreground">{transaction.subcategory_name}</div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 <div className="col-span-2 text-muted-foreground hidden md:block">
                   {transaction.account_name}
@@ -498,6 +581,7 @@ function Page() {
         formState={formState}
         setFormState={setFormState}
         categories={availableCategories}
+        subcategories={availableSubcategories}
         accounts={accounts}
         formError={formError}
         submitting={submitting}
@@ -539,21 +623,26 @@ function InlineSelect({
   onValueChange,
   placeholder,
   options,
+  disabled = false,
 }: {
   value: string;
   onValueChange: (value: string) => void;
   placeholder: string;
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; icon_name?: string | null }>;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={onValueChange}>
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger className="w-[180px] bg-input/60 border-border">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            <div className="flex items-center gap-2">
+              {option.icon_name ? <CategoryIcon iconName={option.icon_name} className="h-3.5 w-3.5" /> : null}
+              <span>{option.label}</span>
+            </div>
           </SelectItem>
         ))}
       </SelectContent>
@@ -616,6 +705,7 @@ function TransactionSheet({
   formState,
   setFormState,
   categories,
+  subcategories,
   accounts,
   formError,
   submitting,
@@ -627,6 +717,7 @@ function TransactionSheet({
   formState: TransactionFormState;
   setFormState: React.Dispatch<React.SetStateAction<TransactionFormState>>;
   categories: CategoryRecord[];
+  subcategories: SubcategoryRecord[];
   accounts: AccountRecord[];
   formError: string | null;
   submitting: boolean;
@@ -663,6 +754,7 @@ function TransactionSheet({
                     ...current,
                     type: value as "income" | "expense",
                     category_id: "",
+                    subcategory_id: "",
                   }))
                 }
                 options={[
@@ -722,7 +814,27 @@ function TransactionSheet({
                 options={categories.map((category) => ({
                   value: String(category.category_id),
                   label: category.name,
+                  icon_name: category.icon_name,
                 }))}
+              />
+
+              <FormSelectField
+                label="Subcategory"
+                value={formState.subcategory_id || "none"}
+                onValueChange={(value) =>
+                  setFormState((current) => ({
+                    ...current,
+                    subcategory_id: value === "none" ? "" : value,
+                  }))
+                }
+                disabled={subcategories.length === 0}
+                options={[
+                  { value: "none", label: "No subcategory" },
+                  ...subcategories.map((subcategory) => ({
+                    value: String(subcategory.subcategory_id),
+                    label: subcategory.name,
+                  })),
+                ]}
               />
 
               <FormInputField
@@ -784,25 +896,30 @@ function FormSelectField({
   value,
   onValueChange,
   options,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onValueChange: (value: string) => void;
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; icon_name?: string | null }>;
+  disabled?: boolean;
 }) {
   return (
     <div className="space-y-2">
       <Label className="text-xs uppercase tracking-wider text-muted-foreground">
         {label}
       </Label>
-      <Select value={value} onValueChange={onValueChange}>
+      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
         <SelectTrigger className="h-11 bg-input/60 border-border">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.label}
+              <div className="flex items-center gap-2">
+                {option.icon_name ? <CategoryIcon iconName={option.icon_name} className="h-3.5 w-3.5" /> : null}
+                <span>{option.label}</span>
+              </div>
             </SelectItem>
           ))}
         </SelectContent>

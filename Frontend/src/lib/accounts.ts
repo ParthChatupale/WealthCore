@@ -19,6 +19,7 @@ export type TransactionRecord = {
   account_name: string | null;
   category_id: number;
   category_name: string | null;
+  category_icon_name: string | null;
   subcategory_id: number | null;
   subcategory_name: string | null;
   amount: number;
@@ -28,11 +29,46 @@ export type TransactionRecord = {
   created_at: string;
 };
 
+export type SubcategoryRecord = {
+  subcategory_id: number;
+  category_id: number;
+  name: string;
+};
+
 export type CategoryRecord = {
   category_id: number;
   name: string;
   type: "income" | "expense";
   is_default: boolean;
+  icon_name: string | null;
+  subcategories: SubcategoryRecord[];
+};
+
+export type BudgetCategorySummary = {
+  budget_id: number;
+  category_id: number;
+  category_name: string | null;
+  icon_name: string | null;
+  limit_amount: number;
+  spent_amount: number;
+  remaining_amount: number;
+  over_budget_amount: number;
+};
+
+export type BudgetSummary = {
+  month: string;
+  has_budget: boolean;
+  total_limit: number;
+  total_spent: number;
+  total_remaining: number;
+  used_percentage: number;
+  over_budget_categories: Array<{
+    category_id: number;
+    category_name: string | null;
+    icon_name: string | null;
+    over_budget_amount: number;
+  }>;
+  categories: BudgetCategorySummary[];
 };
 
 export type DashboardData = {
@@ -51,6 +87,7 @@ export type DashboardData = {
     has_accounts: boolean;
   };
   recent_transactions: TransactionRecord[];
+  budget: BudgetSummary;
 };
 
 export type AccountInput = {
