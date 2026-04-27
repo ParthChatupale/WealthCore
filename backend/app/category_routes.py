@@ -4,6 +4,7 @@ from app.auth import auth_error, login_required
 from app.category_icons import CURATED_CATEGORY_ICONS
 from app.extensions import db
 from app.models import Budget, Category, RecurringTransaction, Subcategory, Transaction
+from app.taxonomy_defaults import ensure_default_taxonomy
 
 
 category_bp = Blueprint("categories", __name__, url_prefix="/api")
@@ -13,6 +14,9 @@ ALLOWED_CATEGORY_TYPES = {"income", "expense"}
 @category_bp.get("/categories")
 @login_required
 def list_categories():
+    if ensure_default_taxonomy(g.current_user.user_id):
+        db.session.commit()
+
     category_type = (request.args.get("type") or "").strip().lower()
     query = Category.query.filter_by(user_id=g.current_user.user_id).order_by(
         Category.type.asc(),

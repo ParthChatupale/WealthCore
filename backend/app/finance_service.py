@@ -98,6 +98,31 @@ def month_range_from_key(month_key: str) -> tuple[date, date]:
     return start, next_month
 
 
+def previous_month_key(month_key: str) -> str:
+    start, _ = month_range_from_key(month_key)
+    if start.month == 1:
+        previous = date(start.year - 1, 12, 1)
+    else:
+        previous = date(start.year, start.month - 1, 1)
+    return previous.strftime("%Y-%m")
+
+
+def rolling_month_keys(month_key: str, months: int) -> list[str]:
+    start, _ = month_range_from_key(month_key)
+    month_points: list[date] = []
+
+    year = start.year
+    month = start.month
+    for _ in range(months):
+        month_points.append(date(year, month, 1))
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+
+    return [item.strftime("%Y-%m") for item in reversed(month_points)]
+
+
 def get_monthly_expense_spending_by_category(user_id: int, month_key: str) -> dict[int, Decimal]:
     start, next_month = month_range_from_key(month_key)
     rows = (
@@ -115,6 +140,207 @@ def get_monthly_expense_spending_by_category(user_id: int, month_key: str) -> di
         .all()
     )
     return {category_id: Decimal(total) for category_id, total in rows}
+
+
+def get_monthly_income_expense_totals(user_id: int, month_key: str) -> dict[str, Decimal]:
+    start, next_month = month_range_from_key(month_key)
+    rows = (
+        db.session.query(
+            Transaction.type,
+            func.coalesce(func.sum(Transaction.amount), 0),
+        )
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.date >= start,
+            Transaction.date < next_month,
+        )
+        .group_by(Transaction.type)
+        .all()
+    )
+    totals = {
+        "income": ZERO_DECIMAL,
+        "expense": ZERO_DECIMAL,
+    }
+    for transaction_type, total in rows:
+        totals[str(transaction_type)] = Decimal(total or 0)
+
+    return {
+        "income": totals["income"],
+        "expenses": totals["expense"],
+        "savings": totals["income"] - totals["expense"],
+    }
+
+
+def calculate_delta_pct(current: Decimal, previous: Decimal) -> float:
+    if previous == 0:
+        if current == 0:
+            return 0.0
+        return 100.0 if current > 0 else -100.0
+    return round(float(((current - previous) / previous) * 100), 2)
+
+
+def get_report_overview(user_id: int, month_key: str) -> dict:
+    current = get_monthly_income_expense_totals(user_id, month_key)
+    previous = get_monthly_income_expense_totals(user_id, previous_month_key(month_key))
+    category_breakdown = get_category_breakdown(user_id, month_key)
+    top_category = category_breakdown[0] if category_breakdown else None
+
+    return {
+        "month": month_key,
+        "income": float(current["income"]),
+        "expenses": float(current["expenses"]),
+        "savings": float(current["savings"]),
+        "income_delta_pct": calculate_delta_pct(current["income"], previous["income"]),
+        "expense_delta_pct": calculate_delta_pct(current["expenses"], previous["expenses"]),
+        "savings_delta_pct": calculate_delta_pct(current["savings"], previous["savings"]),
+        "top_category": {
+            "category_id": top_category["category_id"],
+            "category_name": top_category["category_name"],
+            "icon_name": top_category["icon_name"],
+            "spent_amount": top_category["spent_amount"],
+        }
+        if top_category
+        else None,
+        "account_balances": list_accounts_with_balances(user_id),
+    }
+
+
+def get_monthly_trend(user_id: int, month_key: str, months: int = 6) -> list[dict]:
+    keys = rolling_month_keys(month_key, months)
+    month_map = {
+        key: {
+            "month": key,
+            "income": 0.0,
+            "expenses": 0.0,
+            "savings": 0.0,
+        }
+        for key in keys
+    }
+
+    start, _ = month_range_from_key(keys[0])
+    _, next_month = month_range_from_key(keys[-1])
+    rows = (
+        db.session.query(
+            func.to_char(Transaction.date, "YYYY-MM"),
+            Transaction.type,
+            func.coalesce(func.sum(Transaction.amount), 0),
+        )
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.date >= start,
+            Transaction.date < next_month,
+        )
+        .group_by(func.to_char(Transaction.date, "YYYY-MM"), Transaction.type)
+        .all()
+    )
+
+    for month_label, transaction_type, total in rows:
+        key = str(month_label)
+        if key not in month_map:
+            continue
+        amount = float(total or 0)
+        if transaction_type == "income":
+            month_map[key]["income"] = amount
+        else:
+            month_map[key]["expenses"] = amount
+
+    for item in month_map.values():
+        item["savings"] = round(item["income"] - item["expenses"], 2)
+
+    return [month_map[key] for key in keys]
+
+
+def get_category_breakdown(user_id: int, month_key: str) -> list[dict]:
+    start, next_month = month_range_from_key(month_key)
+    previous_key = previous_month_key(month_key)
+    previous_start, previous_next_month = month_range_from_key(previous_key)
+
+    current_rows = (
+        db.session.query(
+            Category.category_id,
+            Category.name,
+            Category.icon_name,
+            func.coalesce(func.sum(Transaction.amount), 0),
+        )
+        .join(Transaction, Transaction.category_id == Category.category_id)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type == "expense",
+            Transaction.date >= start,
+            Transaction.date < next_month,
+        )
+        .group_by(Category.category_id, Category.name, Category.icon_name)
+        .all()
+    )
+    previous_rows = (
+        db.session.query(
+            Category.category_id,
+            func.coalesce(func.sum(Transaction.amount), 0),
+        )
+        .join(Transaction, Transaction.category_id == Category.category_id)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type == "expense",
+            Transaction.date >= previous_start,
+            Transaction.date < previous_next_month,
+        )
+        .group_by(Category.category_id)
+        .all()
+    )
+
+    previous_map = {category_id: Decimal(total or 0) for category_id, total in previous_rows}
+    current_map = {}
+    total_expenses = ZERO_DECIMAL
+    for category_id, category_name, icon_name, total in current_rows:
+        amount = Decimal(total or 0)
+        current_map[category_id] = {
+            "category_id": category_id,
+            "category_name": category_name,
+            "icon_name": icon_name,
+            "spent_amount": amount,
+        }
+        total_expenses += amount
+
+    category_ids = set(current_map.keys()) | set(previous_map.keys())
+    if not category_ids:
+        return []
+
+    category_meta_rows = (
+        Category.query.filter(Category.category_id.in_(category_ids))
+        .order_by(Category.name.asc())
+        .all()
+    )
+    category_meta = {
+        category.category_id: {
+            "category_name": category.name,
+            "icon_name": category.icon_name,
+        }
+        for category in category_meta_rows
+    }
+
+    rows = []
+    for category_id in category_ids:
+        meta = category_meta.get(category_id, {})
+        current_amount = current_map.get(category_id, {}).get("spent_amount", ZERO_DECIMAL)
+        previous_amount = previous_map.get(category_id, ZERO_DECIMAL)
+        percentage = 0.0
+        if total_expenses > 0:
+            percentage = round(float((current_amount / total_expenses) * 100), 2)
+
+        rows.append(
+            {
+                "category_id": category_id,
+                "category_name": meta.get("category_name"),
+                "icon_name": meta.get("icon_name"),
+                "spent_amount": float(current_amount),
+                "percentage_of_expenses": percentage,
+                "previous_month_spent": float(previous_amount),
+                "change_pct": calculate_delta_pct(current_amount, previous_amount),
+            }
+        )
+
+    rows.sort(key=lambda item: (-item["spent_amount"], item["category_name"] or ""))
+    return rows
 
 
 def get_budget_rows_with_actuals(user_id: int, month_key: str) -> list[dict]:

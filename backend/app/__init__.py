@@ -6,6 +6,7 @@ from app.budget_routes import budget_bp
 from app.category_routes import category_bp
 from app.config import Config
 from app.extensions import cors, db, migrate
+from app.report_routes import report_bp
 from app.routes import main_bp
 from app.transaction_routes import transaction_bp
 
@@ -29,6 +30,7 @@ def create_app(config_class=Config):
     app.register_blueprint(account_bp)
     app.register_blueprint(budget_bp)
     app.register_blueprint(category_bp)
+    app.register_blueprint(report_bp)
     app.register_blueprint(transaction_bp)
 
     return app

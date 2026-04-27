@@ -84,6 +84,7 @@ From this point onward, we should update this file whenever a milestone is compl
 - [x] Category, Subcategory, and Icon Management
   - [x] Add category CRUD
   - [x] Add subcategory CRUD
+  - [x] Seed sensible default subcategories for known default categories
   - [x] Add category icon support
   - [x] Add `/app/categories`
   - [x] Group transactions by category + subcategory in the form UX
@@ -91,11 +92,11 @@ From this point onward, we should update this file whenever a milestone is compl
 
 ## After Taxonomy Phase
 
-- [ ] Reports and analytics
-  - [ ] Overview report
-  - [ ] Monthly trend report
-  - [ ] Category breakdown report
-  - [ ] Budget vs actual report page
+- [x] Reports and analytics
+  - [x] Overview report
+  - [x] Monthly trend report
+  - [x] Category breakdown report
+  - [x] Budget vs actual report page
   - [ ] Consider PostgreSQL views for reporting queries
 
 - [ ] Settings

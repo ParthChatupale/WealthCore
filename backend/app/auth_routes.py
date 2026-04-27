@@ -11,31 +11,14 @@ from app.auth import (
     login_required,
     set_auth_cookie,
 )
-from app.category_icons import default_icon_for_category
 from app.extensions import db
-from app.models import Category, User
+from app.models import User
+from app.taxonomy_defaults import ensure_default_taxonomy
 
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-DEFAULT_CATEGORIES = {
-    "expense": [
-        "Food",
-        "Travel",
-        "Bills",
-        "Shopping",
-        "Entertainment",
-        "Health",
-        "Other",
-    ],
-    "income": [
-        "Salary",
-        "Freelance",
-        "Investment",
-        "Other",
-    ],
-}
 
 
 @auth_bp.post("/register")
@@ -64,7 +47,7 @@ def register():
     )
     db.session.add(user)
     db.session.flush()
-    seed_default_categories(user.user_id)
+    ensure_default_taxonomy(user.user_id)
     db.session.commit()
 
     response = jsonify({"user": user.to_dict()})
@@ -86,6 +69,9 @@ def login():
     if not user or not check_password_hash(user.password_hash, password):
         return auth_error("Invalid email or password.", 401)
 
+    if ensure_default_taxonomy(user.user_id):
+        db.session.commit()
+
     response = jsonify({"user": user.to_dict()})
     set_auth_cookie(response, create_access_token(user))
     return response
@@ -102,6 +88,8 @@ def logout():
 @login_required
 def me():
     user = get_authenticated_user()
+    if ensure_default_taxonomy(user.user_id):
+        db.session.commit()
     return jsonify({"user": user.to_dict()})
 
 
@@ -125,17 +113,3 @@ def validate_registration_input(
     if not currency:
         return "Currency is required."
     return None
-
-
-def seed_default_categories(user_id: int) -> None:
-    for category_type, names in DEFAULT_CATEGORIES.items():
-        for name in names:
-            db.session.add(
-                Category(
-                    user_id=user_id,
-                    name=name,
-                    type=category_type,
-                    is_default=True,
-                    icon_name=default_icon_for_category(category_type, name),
-                )
-            )
