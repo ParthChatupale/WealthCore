@@ -154,6 +154,8 @@ def delete_subcategory(subcategory_id: int):
 
     if Transaction.query.filter_by(subcategory_id=subcategory.subcategory_id).first():
         return auth_error("This subcategory cannot be deleted because it is used by transactions.", 409)
+    if RecurringTransaction.query.filter_by(subcategory_id=subcategory.subcategory_id).first():
+        return auth_error("This subcategory cannot be deleted because it is used by recurring rules.", 409)
 
     db.session.delete(subcategory)
     db.session.commit()

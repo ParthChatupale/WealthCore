@@ -4,9 +4,9 @@ from flask import Blueprint, g, jsonify, request
 
 from app.auth import auth_error, login_required
 from app.finance_service import (
-    get_budget_summary,
     get_category_breakdown,
     get_monthly_trend,
+    get_report_budget_summary,
     get_report_overview,
     month_key_from_date,
 )
@@ -67,7 +67,7 @@ def budget_vs_actual():
     if error:
         return auth_error(error, 400)
 
-    return jsonify(get_budget_summary(g.current_user.user_id, month_key))
+    return jsonify(get_report_budget_summary(g.current_user.user_id, month_key))
 
 
 def parse_month_key(value: str | None) -> tuple[str, str | None]:

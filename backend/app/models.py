@@ -121,6 +121,7 @@ class Subcategory(db.Model):
 
     category = db.relationship("Category", back_populates="subcategories")
     transactions = db.relationship("Transaction", back_populates="subcategory")
+    recurring_transactions = db.relationship("RecurringTransaction", back_populates="subcategory")
 
     def to_dict(self):
         return {
@@ -170,6 +171,7 @@ class Transaction(db.Model):
             "category_icon_name": self.category.icon_name if self.category else None,
             "subcategory_id": self.subcategory_id,
             "subcategory_name": self.subcategory.name if self.subcategory else None,
+            "recurring_id": self.recurring_id,
             "amount": float(self.amount),
             "type": self.type,
             "date": self.date.isoformat(),
@@ -210,15 +212,39 @@ class RecurringTransaction(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False, index=True)
     account_id = db.Column(db.Integer, db.ForeignKey("accounts.account_id"), nullable=False, index=True)
     category_id = db.Column(db.Integer, db.ForeignKey("categories.category_id"), nullable=False, index=True)
+    subcategory_id = db.Column(db.Integer, db.ForeignKey("subcategories.subcategory_id"), nullable=True, index=True)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     type = db.Column(db.String(20), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
     frequency = db.Column(db.String(20), nullable=False)
     next_run_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
 
     user = db.relationship("User", back_populates="recurring_transactions")
     account = db.relationship("Account", back_populates="recurring_transactions")
     category = db.relationship("Category", back_populates="recurring_transactions")
+    subcategory = db.relationship("Subcategory", back_populates="recurring_transactions")
     transactions = db.relationship("Transaction", back_populates="recurring_transaction")
+
+    def to_dict(self):
+        return {
+            "recurring_id": self.recurring_id,
+            "user_id": self.user_id,
+            "account_id": self.account_id,
+            "account_name": self.account.name if self.account else None,
+            "category_id": self.category_id,
+            "category_name": self.category.name if self.category else None,
+            "category_icon_name": self.category.icon_name if self.category else None,
+            "subcategory_id": self.subcategory_id,
+            "subcategory_name": self.subcategory.name if self.subcategory else None,
+            "amount": float(self.amount),
+            "type": self.type,
+            "description": self.description,
+            "frequency": self.frequency,
+            "next_run_date": self.next_run_date.isoformat(),
+            "created_at": self.created_at.isoformat(),
+            "is_due": self.next_run_date <= datetime.now(timezone.utc).date(),
+        }
 
 
 class ReportSnapshot(db.Model):
@@ -233,3 +259,39 @@ class ReportSnapshot(db.Model):
     generated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
 
     user = db.relationship("User", back_populates="report_snapshots")
+
+
+class ReportMonthlyTotalsView(db.Model):
+    __tablename__ = "report_monthly_totals_v"
+
+    user_id = db.Column(db.Integer, primary_key=True)
+    month = db.Column(db.String(7), primary_key=True)
+    income_total = db.Column(db.Numeric(12, 2), nullable=False)
+    expense_total = db.Column(db.Numeric(12, 2), nullable=False)
+    savings_total = db.Column(db.Numeric(12, 2), nullable=False)
+
+
+class ReportCategoryExpenseView(db.Model):
+    __tablename__ = "report_category_expense_v"
+
+    user_id = db.Column(db.Integer, primary_key=True)
+    month = db.Column(db.String(7), primary_key=True)
+    category_id = db.Column(db.Integer, primary_key=True)
+    category_name = db.Column(db.String(120), nullable=False)
+    icon_name = db.Column(db.String(80), nullable=True)
+    spent_amount = db.Column(db.Numeric(12, 2), nullable=False)
+
+
+class ReportBudgetActualView(db.Model):
+    __tablename__ = "report_budget_actual_v"
+
+    budget_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)
+    month = db.Column(db.String(7), nullable=False)
+    category_id = db.Column(db.Integer, nullable=False)
+    category_name = db.Column(db.String(120), nullable=False)
+    icon_name = db.Column(db.String(80), nullable=True)
+    limit_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    spent_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    remaining_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    over_budget_amount = db.Column(db.Numeric(12, 2), nullable=False)

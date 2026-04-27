@@ -17,6 +17,7 @@ Authenticated users can access:
 - Accounts
 - Budget
 - Categories
+- Recurring
 - Reports
 - Settings
 - Logout
@@ -49,8 +50,8 @@ erDiagram
         string name
         string email
         string password_hash
-        string country
-        string currency
+        string country nullable
+        string currency nullable
         datetime created_at
     }
 
@@ -69,7 +70,7 @@ erDiagram
         string name
         string type
         boolean is_default
-        string icon_name
+        string icon_name nullable
     }
 
     SUBCATEGORY {
@@ -88,7 +89,7 @@ erDiagram
         decimal amount
         string type
         date date
-        string description
+        string description nullable
         datetime created_at
     }
 
@@ -105,10 +106,13 @@ erDiagram
         int user_id FK
         int account_id FK
         int category_id FK
+        int subcategory_id FK nullable
         decimal amount
         string type
+        string description nullable
         string frequency
         date next_run_date
+        datetime created_at
     }
 
     REPORT_SNAPSHOT {
@@ -137,6 +141,7 @@ erDiagram
     CATEGORY ||--o{ RECURRING_TRANSACTION : assigned_to
 
     SUBCATEGORY ||--o{ TRANSACTION : optionally_classifies
+    SUBCATEGORY ||--o{ RECURRING_TRANSACTION : optionally_classifies
 
     RECURRING_TRANSACTION ||--o{ TRANSACTION : generates
 ```
@@ -154,5 +159,40 @@ erDiagram
 - Categories now support `icon_name`, and each category can contain user-owned subcategories.
 - `subcategory_id` is optional because a transaction may use only a main category.
 - `recurring_id` is optional because only generated recurring transactions reference it.
+- Recurring rules now also support optional `subcategory_id` and `description`.
 - `month` in `budgets` and `report_snapshots` represents a monthly reporting period such as `2026-04`.
 - `transactions` are the core financial records and drive dashboard summaries, budget tracking, and reports.
+- `report_snapshots` currently exists in the schema but live reporting is built from real queries, not stored snapshots.
+
+## Table Purpose
+
+- `users`: authentication and user-level regional preferences
+- `accounts`: money containers such as bank, cash, and wallet
+- `categories`: main classification buckets for income and expense data
+- `subcategories`: more detailed grouping under a parent category
+- `transactions`: actual financial events and the main analytical source
+- `budgets`: monthly category-level spending plans
+- `recurring_transactions`: automation rules that generate future transactions
+- `report_snapshots`: reserved reporting table for future extension
+
+## Why Recurring Rules Are Separate
+
+Recurring rules are not actual money events. They are instructions that say “create this transaction whenever it becomes due.”  
+Keeping them separate from `transactions` avoids mixing:
+
+- future automation rules
+- historical financial records
+
+When a rule becomes due, it generates real transaction rows linked by `transactions.recurring_id`.
+
+## Normalization and Constraints
+
+- User-owned data is isolated by `user_id`
+- Account names are unique per user
+- Category names are unique per user per type
+- Subcategory names are unique within a category
+- Budget rows are unique per `user + category + month`
+- Transaction and recurring `type` are constrained to `income` or `expense`
+- Recurring `frequency` is constrained to `daily`, `weekly`, `monthly`, or `yearly`
+- Positive-money constraints are enforced on transactions and recurring rules
+- Account balances are not duplicated as mutable state; live balance is derived from transaction history

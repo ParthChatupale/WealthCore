@@ -10,7 +10,7 @@ from app.finance_service import (
     list_accounts_with_balances,
     month_key_from_date,
 )
-from app.models import Account, Transaction
+from app.models import Account, RecurringTransaction, Transaction
 
 
 account_bp = Blueprint("accounts", __name__, url_prefix="/api")
@@ -101,6 +101,9 @@ def delete_account(account_id: int):
     has_transactions = Transaction.query.filter_by(account_id=account.account_id).first() is not None
     if has_transactions:
         return auth_error("This account cannot be deleted because it already has transactions.", 409)
+    has_recurring_rules = RecurringTransaction.query.filter_by(account_id=account.account_id).first() is not None
+    if has_recurring_rules:
+        return auth_error("This account cannot be deleted because it is used by recurring rules.", 409)
 
     db.session.delete(account)
     db.session.commit()

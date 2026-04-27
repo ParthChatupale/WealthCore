@@ -4,7 +4,15 @@ from decimal import Decimal
 from sqlalchemy import case, func
 
 from app.extensions import db
-from app.models import Account, Budget, Category, Transaction
+from app.models import (
+    Account,
+    Budget,
+    Category,
+    ReportBudgetActualView,
+    ReportCategoryExpenseView,
+    ReportMonthlyTotalsView,
+    Transaction,
+)
 
 
 ZERO_DECIMAL = Decimal("0.00")
@@ -179,9 +187,25 @@ def calculate_delta_pct(current: Decimal, previous: Decimal) -> float:
     return round(float(((current - previous) / previous) * 100), 2)
 
 
+def get_monthly_totals_from_view(user_id: int, month_key: str) -> dict[str, Decimal]:
+    row = ReportMonthlyTotalsView.query.filter_by(user_id=user_id, month=month_key).first()
+    if not row:
+        return {
+            "income": ZERO_DECIMAL,
+            "expenses": ZERO_DECIMAL,
+            "savings": ZERO_DECIMAL,
+        }
+
+    return {
+        "income": Decimal(row.income_total or 0),
+        "expenses": Decimal(row.expense_total or 0),
+        "savings": Decimal(row.savings_total or 0),
+    }
+
+
 def get_report_overview(user_id: int, month_key: str) -> dict:
-    current = get_monthly_income_expense_totals(user_id, month_key)
-    previous = get_monthly_income_expense_totals(user_id, previous_month_key(month_key))
+    current = get_monthly_totals_from_view(user_id, month_key)
+    previous = get_monthly_totals_from_view(user_id, previous_month_key(month_key))
     category_breakdown = get_category_breakdown(user_id, month_key)
     top_category = category_breakdown[0] if category_breakdown else None
 
@@ -217,86 +241,46 @@ def get_monthly_trend(user_id: int, month_key: str, months: int = 6) -> list[dic
         for key in keys
     }
 
-    start, _ = month_range_from_key(keys[0])
-    _, next_month = month_range_from_key(keys[-1])
     rows = (
-        db.session.query(
-            func.to_char(Transaction.date, "YYYY-MM"),
-            Transaction.type,
-            func.coalesce(func.sum(Transaction.amount), 0),
+        ReportMonthlyTotalsView.query.filter(
+            ReportMonthlyTotalsView.user_id == user_id,
+            ReportMonthlyTotalsView.month.in_(keys),
         )
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.date >= start,
-            Transaction.date < next_month,
-        )
-        .group_by(func.to_char(Transaction.date, "YYYY-MM"), Transaction.type)
         .all()
     )
 
-    for month_label, transaction_type, total in rows:
-        key = str(month_label)
+    for row in rows:
+        key = row.month
         if key not in month_map:
             continue
-        amount = float(total or 0)
-        if transaction_type == "income":
-            month_map[key]["income"] = amount
-        else:
-            month_map[key]["expenses"] = amount
-
-    for item in month_map.values():
-        item["savings"] = round(item["income"] - item["expenses"], 2)
+        month_map[key]["income"] = float(row.income_total or 0)
+        month_map[key]["expenses"] = float(row.expense_total or 0)
+        month_map[key]["savings"] = float(row.savings_total or 0)
 
     return [month_map[key] for key in keys]
 
 
 def get_category_breakdown(user_id: int, month_key: str) -> list[dict]:
-    start, next_month = month_range_from_key(month_key)
     previous_key = previous_month_key(month_key)
-    previous_start, previous_next_month = month_range_from_key(previous_key)
-
     current_rows = (
-        db.session.query(
-            Category.category_id,
-            Category.name,
-            Category.icon_name,
-            func.coalesce(func.sum(Transaction.amount), 0),
+        ReportCategoryExpenseView.query.filter_by(user_id=user_id, month=month_key)
+        .order_by(
+            ReportCategoryExpenseView.spent_amount.desc(),
+            ReportCategoryExpenseView.category_name.asc(),
         )
-        .join(Transaction, Transaction.category_id == Category.category_id)
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.type == "expense",
-            Transaction.date >= start,
-            Transaction.date < next_month,
-        )
-        .group_by(Category.category_id, Category.name, Category.icon_name)
         .all()
     )
-    previous_rows = (
-        db.session.query(
-            Category.category_id,
-            func.coalesce(func.sum(Transaction.amount), 0),
-        )
-        .join(Transaction, Transaction.category_id == Category.category_id)
-        .filter(
-            Transaction.user_id == user_id,
-            Transaction.type == "expense",
-            Transaction.date >= previous_start,
-            Transaction.date < previous_next_month,
-        )
-        .group_by(Category.category_id)
-        .all()
-    )
+    previous_rows = ReportCategoryExpenseView.query.filter_by(user_id=user_id, month=previous_key).all()
 
-    previous_map = {category_id: Decimal(total or 0) for category_id, total in previous_rows}
+    previous_map = {row.category_id: Decimal(row.spent_amount or 0) for row in previous_rows}
     current_map = {}
     total_expenses = ZERO_DECIMAL
-    for category_id, category_name, icon_name, total in current_rows:
-        amount = Decimal(total or 0)
-        current_map[category_id] = {
-            "category_id": category_id,
-            "category_name": category_name,
-            "icon_name": icon_name,
+    for row in current_rows:
+        amount = Decimal(row.spent_amount or 0)
+        current_map[row.category_id] = {
+            "category_id": row.category_id,
+            "category_name": row.category_name,
+            "icon_name": row.icon_name,
             "spent_amount": amount,
         }
         total_expenses += amount
@@ -372,12 +356,66 @@ def get_budget_rows_with_actuals(user_id: int, month_key: str) -> list[dict]:
                 "remaining_amount": float(remaining_amount),
                 "over_budget_amount": float(over_budget_amount),
             }
-        )
+    )
     return rows
+
+
+def get_report_budget_rows(user_id: int, month_key: str) -> list[dict]:
+    rows = (
+        ReportBudgetActualView.query.filter_by(user_id=user_id, month=month_key)
+        .order_by(ReportBudgetActualView.category_name.asc())
+        .all()
+    )
+
+    return [
+        {
+            "budget_id": row.budget_id,
+            "category_id": row.category_id,
+            "category_name": row.category_name,
+            "icon_name": row.icon_name,
+            "limit_amount": float(row.limit_amount),
+            "spent_amount": float(row.spent_amount),
+            "remaining_amount": float(row.remaining_amount),
+            "over_budget_amount": float(row.over_budget_amount),
+        }
+        for row in rows
+    ]
 
 
 def get_budget_summary(user_id: int, month_key: str) -> dict:
     category_rows = get_budget_rows_with_actuals(user_id, month_key)
+    total_limit = sum(Decimal(str(row["limit_amount"])) for row in category_rows)
+    total_spent = sum(Decimal(str(row["spent_amount"])) for row in category_rows)
+    total_remaining = total_limit - total_spent
+    used_percentage = 0
+    if total_limit > 0:
+        used_percentage = min(100, round(float((total_spent / total_limit) * 100), 2))
+
+    over_budget_categories = [
+        {
+            "category_id": row["category_id"],
+            "category_name": row["category_name"],
+            "icon_name": row["icon_name"],
+            "over_budget_amount": row["over_budget_amount"],
+        }
+        for row in category_rows
+        if row["over_budget_amount"] > 0
+    ]
+
+    return {
+        "month": month_key,
+        "has_budget": bool(category_rows),
+        "total_limit": float(total_limit),
+        "total_spent": float(total_spent),
+        "total_remaining": float(total_remaining),
+        "used_percentage": used_percentage,
+        "over_budget_categories": over_budget_categories,
+        "categories": category_rows,
+    }
+
+
+def get_report_budget_summary(user_id: int, month_key: str) -> dict:
+    category_rows = get_report_budget_rows(user_id, month_key)
     total_limit = sum(Decimal(str(row["limit_amount"])) for row in category_rows)
     total_spent = sum(Decimal(str(row["spent_amount"])) for row in category_rows)
     total_remaining = total_limit - total_spent
